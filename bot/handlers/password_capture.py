@@ -32,9 +32,12 @@ def register(app: Client) -> None:
     Register password capture handler.
     """
 
-    @app.on_message(filters.text & ~filters.command)
+    @app.on_message(
+        filters.text
+        & ~filters.command(["start", "help", "about", "stats", "user_data", "delete", "delfile"])
+    )
     async def password_capture_handler(client: Client, message: Message):
-        # We only act if user is replying to a bot prompt
+        # Only act if user is replying to bot password prompt
         if not message.reply_to_message:
             return
 
@@ -60,7 +63,7 @@ def register(app: Client) -> None:
             "Generating secure access links..."
         )
 
-        # Log
+        # Log event
         await log_event(
             client,
             title="PASSWORD SET",
