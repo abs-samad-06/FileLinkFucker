@@ -6,6 +6,7 @@ from pyrogram.types import Message
 from bot.config import FSUB_CHANNELS
 from bot.utils.fsub import check_fsub, fsub_prompt
 from bot.services.storage import store_telegram_file
+from bot.handlers.password_prompt import password_prompt_buttons
 from bot.utils.logger import log_event
 
 
@@ -14,32 +15,27 @@ def register(app: Client) -> None:
     Register Telegram file upload handler.
     """
 
-    @app.on_message(
-        filters.document | filters.video | filters.audio
-    )
+    @app.on_message(filters.document | filters.video | filters.audio)
     async def upload_handler(client: Client, message: Message):
         user = message.from_user
 
-        # HARD FSUB GATE
+        # ───── FSUB CHECK ─────
         if FSUB_CHANNELS:
             joined = await check_fsub(client, user.id)
             if not joined:
                 await message.reply(
-                    text=(
-                        "⛔ ACCESS DENIED\n\n"
-                        "Join required channels to upload files."
-                    ),
-                    reply_markup=fsub_prompt()
+                    "⛔ ACCESS DENIED\n\nJoin required channels to upload files.",
+                    reply_markup=fsub_prompt(),
                 )
                 return
 
-        # Acknowledge interception
+        # Acknowledge
         status_msg = await message.reply(
             "⚡ FILE INTERCEPTED\nProcessing..."
         )
 
         try:
-            # Store file (handles duplicates internally)
+            # Store Telegram file
             file_key, file_doc = await store_telegram_file(
                 client,
                 source_message=message,
@@ -58,15 +54,23 @@ def register(app: Client) -> None:
             )
             return
 
-        # Ask for password protection (actual links sent later)
+        # ───── PASSWORD PROMPT (CRITICAL FIX) ─────
         await status_msg.edit_text(
             text=(
                 "🔐 PROTECT THIS FILE?\n\n"
+                f"FILE KEY : `{file_key}`\n\n"
                 "Do you want to set a password?"
             ),
-            reply_markup=None,
+            reply_markup=password_prompt_buttons(file_key),
+            disable_web_page_preview=True,
         )
 
-        # NOTE:
-        # Password prompt + link generation will be wired
-        # in next handlers (callbacks / message flow)
+        await log_event(
+            client,
+            title="FILE INGESTED",
+            body=f"FILE KEY : `{file_key}`",
+            event="file_ingested",
+            payload={"file_key": file_key},
+            user_id=user.id,
+            file_key=file_key,
+        )
