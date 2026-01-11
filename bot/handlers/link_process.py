@@ -16,7 +16,18 @@ def register(app: Client) -> None:
     analyze -> extract
     """
 
-    @app.on_message(filters.text & ~filters.command)
+    @app.on_message(
+        filters.text
+        & ~filters.command([
+            "start",
+            "help",
+            "about",
+            "stats",
+            "user_data",
+            "delete",
+            "delfile",
+        ])
+    )
     async def link_process_handler(client: Client, message: Message):
         text = message.text or ""
         if "http://" not in text and "https://" not in text:
@@ -39,7 +50,10 @@ def register(app: Client) -> None:
 
         # Extract first URL only (batch links handled later)
         url = next(
-            (w for w in text.split() if w.startswith("http://") or w.startswith("https://")),
+            (
+                w for w in text.split()
+                if w.startswith("http://") or w.startswith("https://")
+            ),
             None
         )
         if not url:
@@ -108,7 +122,6 @@ def register(app: Client) -> None:
             await status.edit_text("❌ NO FILES FOUND")
             return
 
-        # TEMP: only first file is handled here
         f = files[0]
         await status.edit_text(
             "⚡ FILE READY FOR INGESTION\n"
@@ -117,9 +130,4 @@ def register(app: Client) -> None:
         )
 
         # NOTE:
-        # Next file will:
-        # - ingest extracted file into storage service
-        # - handle password prompt
-        # - deliver links
-        #
-        # This file ONLY wires router → handler.
+        # Next step will ingest file + password + links
