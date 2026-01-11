@@ -39,7 +39,18 @@ def register(app: Client) -> None:
     Register auto link detection handler.
     """
 
-    @app.on_message(filters.text & ~filters.command)
+    @app.on_message(
+        filters.text
+        & ~filters.command([
+            "start",
+            "help",
+            "about",
+            "stats",
+            "user_data",
+            "delete",
+            "delfile",
+        ])
+    )
     async def link_detect_handler(client: Client, message: Message):
         text = message.text or ""
         match = URL_REGEX.search(text)
@@ -74,19 +85,6 @@ def register(app: Client) -> None:
             )
         )
 
-        # NOTE:
-        # Actual extraction/downloading for each source
-        # will be handled by dedicated services:
-        # - services/extractors/telegram.py
-        # - services/extractors/terabox.py
-        # - services/extractors/gdrive.py
-        # - services/extractors/direct.py
-        #
-        # This handler ONLY:
-        # - detects link
-        # - identifies source
-        # - hands off control
-
         await log_event(
             client,
             title="LINK DETECTED",
@@ -109,4 +107,4 @@ def register(app: Client) -> None:
                 f"Detected source: {source}\n"
                 "Extraction engine initializing…"
             )
-      )
+            )
