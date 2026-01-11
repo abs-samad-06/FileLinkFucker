@@ -6,6 +6,7 @@ from pyrogram import idle
 
 from bot.client import create_bot
 from bot.config import DEBUG
+from bot.handlers import register_all
 
 
 def _graceful_exit(signum, frame):
@@ -15,6 +16,9 @@ def _graceful_exit(signum, frame):
 
 def main():
     app = create_bot()
+
+    # Register all handlers
+    register_all(app)
 
     # Signal handling for clean shutdown
     signal.signal(signal.SIGINT, _graceful_exit)
