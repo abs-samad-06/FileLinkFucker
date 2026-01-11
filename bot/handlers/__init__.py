@@ -17,6 +17,7 @@ def register_all(app: Client) -> None:
 
     # ─────────── BASIC / ACCESS ───────────
     from bot.handlers.start import register as start_register
+    from bot.handlers.help_about import register as help_about_register
     from bot.handlers.fsub_verify import register as fsub_verify_register
 
     # ─────────── FILE UPLOAD FLOW ───────────
@@ -35,6 +36,7 @@ def register_all(app: Client) -> None:
 
     # -------- REGISTER IN ORDER --------
     start_register(app)
+    help_about_register(app)
     fsub_verify_register(app)
 
     upload_register(app)
