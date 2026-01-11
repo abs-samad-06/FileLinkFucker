@@ -6,6 +6,7 @@ from typing import Dict, Tuple
 from datetime import datetime
 
 from pyrogram import Client
+from pyrogram.types import Message
 
 from bot.database.db import db
 from bot.config import STORAGE_CHANNEL_ID
@@ -17,10 +18,11 @@ from bot.utils.identity import generate_fingerprint, generate_secure_key
 from bot.utils.logger import log_event
 
 
+# ============================================================
+# INTERNAL: DOWNLOAD URL → LOCAL
+# ============================================================
+
 async def _download_to_local(url: str, dest: str) -> int:
-    """
-    Download a URL to local file. Returns bytes written.
-    """
     bytes_written = 0
     timeout = aiohttp.ClientTimeout(total=None)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -34,6 +36,94 @@ async def _download_to_local(url: str, dest: str) -> int:
     return bytes_written
 
 
+# ============================================================
+# 🔥 TELEGRAM FILE INGEST (DIRECT USER FILE)
+# ============================================================
+
+async def ingest_telegram_file(
+    *,
+    app: Client,
+    message: Message,
+    user_id: int,
+    username: str | None,
+) -> Tuple[str, Dict]:
+    """
+    Ingest a Telegram-uploaded file/video into system.
+    """
+
+    if not (message.document or message.video):
+        raise RuntimeError("NO TELEGRAM FILE FOUND")
+
+    media = message.document or message.video
+    file_name = getattr(media, "file_name", "video.mp4")
+    file_size = media.file_size
+
+    _ensure_storage_dir()
+
+    # ----- FINGERPRINT (TG MESSAGE BASED) -----
+    base = f"tg:{message.chat.id}:{message.id}"
+    fingerprint = generate_fingerprint(source_url=base)
+
+    existing = db.files.find_one(
+        {"content_fingerprint": fingerprint, "status": {"$ne": "nuked"}}
+    )
+    if existing:
+        return existing["file_key"], existing
+
+    # ----- FILE KEY -----
+    file_key = generate_secure_key(fingerprint=fingerprint)
+    local_file = _local_path(file_key, file_name)
+
+    # ----- DOWNLOAD FROM TELEGRAM -----
+    await message.download(file_name=local_file)
+
+    # ----- UPLOAD TO STORAGE CHANNEL -----
+    sent_msg = await app.send_document(
+        STORAGE_CHANNEL_ID,
+        document=local_file,
+        caption=f"🔑 {file_key}\n📁 {file_name}",
+    )
+
+    # ----- DB RECORD -----
+    file_doc = {
+        "file_key": file_key,
+        "file_name": file_name,
+        "file_size": file_size,
+        "content_fingerprint": fingerprint,
+        "source": "telegram",
+        "storage_chat_id": STORAGE_CHANNEL_ID,
+        "storage_message_id": sent_msg.id,
+        "user_id": user_id,
+        "username": username,
+        "created_at": datetime.utcnow(),
+        "status": "active",
+        "access_count": 0,
+        "last_access": None,
+    }
+
+    db.files.insert_one(file_doc)
+
+    await log_event(
+        app,
+        title="TELEGRAM FILE INGESTED",
+        body=(
+            f"FILE : {file_name}\n"
+            f"KEY  : `{file_key}`\n"
+            f"SIZE : {file_size}"
+        ),
+        event="telegram_ingest_complete",
+        payload={"file_key": file_key},
+        user_id=user_id,
+        file_key=file_key,
+    )
+
+    return file_key, file_doc
+
+
+# ============================================================
+# 🔗 EXTRACTED / LINK FILE INGEST (EXISTING LOGIC)
+# ============================================================
+
 async def ingest_extracted_file(
     *,
     app: Client,
@@ -43,26 +133,14 @@ async def ingest_extracted_file(
 ) -> Tuple[str, Dict]:
     """
     Ingest a single extracted file descriptor into the system.
-
-    file_desc expected keys:
-    - name
-    - size (optional)
-    - download_url (optional)
-    - telegram {chat_id, message_id} (optional)
-
-    Returns:
-        (file_key, file_doc)
     """
+
     _ensure_storage_dir()
 
-    # ----- FINGERPRINT (DB-FIRST) -----
-    if "telegram" in file_desc:
-        # Telegram-sourced descriptor
-        base = f"tg:{file_desc['telegram']['chat_id']}:{file_desc['telegram']['message_id']}"
-        fingerprint = generate_fingerprint(source_url=base)
-    else:
-        # Direct URL or other sources
-        fingerprint = generate_fingerprint(source_url=file_desc.get("download_url", ""))
+    # ----- FINGERPRINT -----
+    fingerprint = generate_fingerprint(
+        source_url=file_desc.get("download_url", "")
+    )
 
     existing = db.files.find_one(
         {"content_fingerprint": fingerprint, "status": {"$ne": "nuked"}}
@@ -70,55 +148,31 @@ async def ingest_extracted_file(
     if existing:
         return existing["file_key"], existing
 
-    # ----- NEW FILE -----
     file_key = generate_secure_key(fingerprint=fingerprint)
     file_name = file_desc.get("name") or "file.bin"
     local_file = _local_path(file_key, file_name)
 
-    # ----- ACQUIRE FILE -----
-    sent_msg = None
-    if "telegram" in file_desc:
-        # Fetch and re-upload from Telegram
-        chat_id = file_desc["telegram"]["chat_id"]
-        msg_id = file_desc["telegram"]["message_id"]
-        src = await app.get_messages(chat_id, msg_id)
-        if not src:
-            raise RuntimeError("SOURCE MESSAGE NOT FOUND")
+    # ----- DOWNLOAD -----
+    bytes_written = await _download_to_local(
+        file_desc["download_url"], local_file
+    )
+    file_size = file_desc.get("size") or bytes_written
 
-        # Download locally first (safe)
-        await src.download(file_name=local_file)
+    # ----- UPLOAD -----
+    sent_msg = await app.send_document(
+        STORAGE_CHANNEL_ID,
+        document=local_file,
+        caption=f"🔑 {file_key}\n📁 {file_name}",
+    )
 
-        # Upload to STORAGE_CHANNEL
-        sent_msg = await app.send_document(
-            STORAGE_CHANNEL_ID,
-            document=local_file,
-            caption=f"🔑 {file_key}\n📁 {file_name}",
-        )
-        file_size = src.document.file_size if src.document else file_desc.get("size")
-
-    else:
-        # Direct URL download
-        bytes_written = await _download_to_local(
-            file_desc["download_url"], local_file
-        )
-        file_size = file_desc.get("size") or bytes_written
-
-        # Upload to STORAGE_CHANNEL
-        sent_msg = await app.send_document(
-            STORAGE_CHANNEL_ID,
-            document=local_file,
-            caption=f"🔑 {file_key}\n📁 {file_name}",
-        )
-
-    # ----- DB RECORD -----
     file_doc = {
         "file_key": file_key,
         "file_name": file_name,
         "file_size": file_size,
         "content_fingerprint": fingerprint,
-        "source": "telegram" if "telegram" in file_desc else "direct",
+        "source": "direct",
         "storage_chat_id": STORAGE_CHANNEL_ID,
-        "storage_message_id": sent_msg.id if sent_msg else None,
+        "storage_message_id": sent_msg.id,
         "user_id": user_id,
         "username": username,
         "created_at": datetime.utcnow(),
@@ -126,18 +180,19 @@ async def ingest_extracted_file(
         "access_count": 0,
         "last_access": None,
     }
+
     db.files.insert_one(file_doc)
 
     await log_event(
         app,
-        title="INGEST COMPLETE",
+        title="LINK FILE INGESTED",
         body=(
             f"FILE : {file_name}\n"
             f"KEY  : `{file_key}`\n"
             f"SIZE : {file_size}"
         ),
-        event="ingest_complete",
-        payload={"file_key": file_key, "file_name": file_name, "size": file_size},
+        event="link_ingest_complete",
+        payload={"file_key": file_key},
         user_id=user_id,
         file_key=file_key,
     )
