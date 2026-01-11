@@ -34,16 +34,22 @@ def _links_text(file_key: str) -> str:
 
 def register(app: Client) -> None:
     """
-    Wire password flow to link delivery.
+    FINAL LINK DELIVERY GATEKEEPER
+    Works for BOTH:
+    - Telegram file flow
+    - Link ingest flow
     """
 
-    # ─────────── NO PASSWORD FLOW ───────────
+    # ─────────── NO PASSWORD (BUTTON CLICK) ───────────
     @app.on_callback_query(filters.regex(r"^pwd_no:"))
     async def _pwd_no_to_links(client: Client, cq: CallbackQuery):
-        file_key = cq.data.split(":", 1)[1]
+        file_key = cq.data.split(":", 1)[1].strip()
         await cq.answer()
 
-        await cq.message.edit_text(_links_text(file_key))
+        await cq.message.edit_text(
+            _links_text(file_key),
+            disable_web_page_preview=True
+        )
 
         await log_event(
             client,
@@ -55,9 +61,10 @@ def register(app: Client) -> None:
             file_key=file_key,
         )
 
-    # ─────────── PASSWORD SET FLOW ───────────
+    # ─────────── PASSWORD SET (TEXT REPLY) ───────────
     @app.on_message(
         filters.text
+        & filters.reply
         & ~filters.command([
             "start",
             "help",
@@ -69,24 +76,32 @@ def register(app: Client) -> None:
         ])
     )
     async def _after_password_set_send_links(client: Client, message: Message):
-        # Trigger only if bot confirmed password set
-        if not message.reply_to_message:
+        replied = message.reply_to_message
+        if not replied:
             return
 
-        bot_text = message.reply_to_message.text or ""
+        bot_text = replied.text or ""
+
+        # Must be password success confirmation
         if "PASSWORD SET SUCCESSFULLY" not in bot_text:
             return
 
-        # Extract file_key from the bot message
-        # Expected format: FILE KEY : `xxxxx`
+        # Extract file_key safely
         if "`" not in bot_text:
             return
 
-        file_key = bot_text.split("`")[1].strip()
+        try:
+            file_key = bot_text.split("`")[1].strip()
+        except Exception:
+            return
+
         if not file_key:
             return
 
-        await message.reply(_links_text(file_key), disable_web_page_preview=True)
+        await message.reply(
+            _links_text(file_key),
+            disable_web_page_preview=True
+        )
 
         await log_event(
             client,
