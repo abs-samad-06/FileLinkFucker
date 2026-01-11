@@ -14,7 +14,18 @@ def register(app: Client) -> None:
     Wire extracted link content into ingestion + password flow.
     """
 
-    @app.on_message(filters.text & ~filters.command)
+    @app.on_message(
+        filters.text
+        & ~filters.command([
+            "start",
+            "help",
+            "about",
+            "stats",
+            "user_data",
+            "delete",
+            "delfile",
+        ])
+    )
     async def link_ingest_flow_handler(client: Client, message: Message):
         text = message.text or ""
         if "http://" not in text and "https://" not in text:
@@ -24,7 +35,10 @@ def register(app: Client) -> None:
 
         # Extract first URL
         url = next(
-            (w for w in text.split() if w.startswith("http://") or w.startswith("https://")),
+            (
+                w for w in text.split()
+                if w.startswith("http://") or w.startswith("https://")
+            ),
             None
         )
         if not url:
@@ -84,4 +98,4 @@ def register(app: Client) -> None:
             payload={"url": url, "file_key": file_key},
             user_id=user.id,
             file_key=file_key,
-      )
+        )
