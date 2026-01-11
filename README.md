@@ -1,14 +1,3 @@
-Ayyy 😈 FINAL STAGE — README + DEPLOY GUIDE
-Rule follow: ek file, full content, copy-paste ready.
-Iske baad koi bole “kaise deploy karu?” to tu seedha README phek ke marega 💀
-
-
----
-
-🧱 FILE 39/??
-
-📄 README.md
-
 # 💀 FileLinkFucker
 
 > **Underground File & Link Engine**  
@@ -87,6 +76,8 @@ STORAGE_CHANNEL_ID=-100xxxxxxxxxx
 LOG_CHANNEL_ID=-100xxxxxxxxxx
 
 ━━━━━━━━━━━━━━━━━━━
+
+
 
 🚀 DEPLOYMENT
 
