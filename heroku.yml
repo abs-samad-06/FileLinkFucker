@@ -1,0 +1,8 @@
+build:
+  docker:
+    web: Dockerfile
+    worker: Dockerfile
+
+run:
+  web: python -m api.main
+  worker: python -m bot.main
