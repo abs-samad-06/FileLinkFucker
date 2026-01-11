@@ -3,7 +3,7 @@
 """
 Handlers package
 ----------------
-All Telegram handlers are registered from here.
+Central registry for all Telegram handlers.
 """
 
 from pyrogram import Client
@@ -12,13 +12,21 @@ from pyrogram import Client
 def register_all(app: Client) -> None:
     """
     Register all handlers with the bot client.
-    Import handlers here to avoid circular imports.
+    Import handlers here to avoid circular imports and
+    to control registration order.
     """
 
-    # NOTE:
-    # Actual handler imports will be added progressively.
-    # Example (later):
-    # from bot.handlers.start import register as start_register
-    # start_register(app)
+    # START & FSUB
+    from bot.handlers.start import register as start_register
+    from bot.handlers.fsub_verify import register as fsub_verify_register
 
-    pass
+    # Register in order
+    start_register(app)
+    fsub_verify_register(app)
+
+    # NOTE:
+    # Next handlers will be added here progressively:
+    # - file upload handler
+    # - link detection handler
+    # - password flow
+    # - admin commands
