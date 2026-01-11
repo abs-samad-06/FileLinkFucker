@@ -1,0 +1,32 @@
+[project]
+name = "filelinkfucker"
+version = "0.1.0"
+description = "Underground file & link extraction engine with streaming, TG mirror, and password protection."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "ABS Studio", email = "dev@absstudio.local" }
+]
+
+dependencies = [
+  "pyrogram==2.0.106",
+  "tgcrypto==1.2.5",
+  "fastapi==0.110.0",
+  "uvicorn==0.27.1",
+  "pymongo==4.6.1",
+  "python-dotenv==1.0.1",
+  "requests==2.31.0",
+  "aiohttp==3.9.3",
+  "python-multipart==0.0.9"
+]
+
+[tool.setuptools]
+packages = ["bot", "api"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
