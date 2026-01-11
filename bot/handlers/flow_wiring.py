@@ -37,7 +37,7 @@ def register(app: Client) -> None:
     Wire password flow to link delivery.
     """
 
-    # When user clicks "NO, SKIP PASSWORD"
+    # ─────────── NO PASSWORD FLOW ───────────
     @app.on_callback_query(filters.regex(r"^pwd_no:"))
     async def _pwd_no_to_links(client: Client, cq: CallbackQuery):
         file_key = cq.data.split(":", 1)[1]
@@ -55,9 +55,19 @@ def register(app: Client) -> None:
             file_key=file_key,
         )
 
-    # After password is set successfully, user sends password text
-    # We detect the success message and then push links
-    @app.on_message(filters.text & ~filters.command)
+    # ─────────── PASSWORD SET FLOW ───────────
+    @app.on_message(
+        filters.text
+        & ~filters.command([
+            "start",
+            "help",
+            "about",
+            "stats",
+            "user_data",
+            "delete",
+            "delfile",
+        ])
+    )
     async def _after_password_set_send_links(client: Client, message: Message):
         # Trigger only if bot confirmed password set
         if not message.reply_to_message:
@@ -67,15 +77,16 @@ def register(app: Client) -> None:
         if "PASSWORD SET SUCCESSFULLY" not in bot_text:
             return
 
-        # Extract file_key from the bot message context
-        # Expect format: FILE KEY : `xxxxx`
-        text = bot_text
-        if "`" not in text:
+        # Extract file_key from the bot message
+        # Expected format: FILE KEY : `xxxxx`
+        if "`" not in bot_text:
             return
 
-        file_key = text.split("`")[1].strip()
+        file_key = bot_text.split("`")[1].strip()
+        if not file_key:
+            return
 
-        await message.reply(_links_text(file_key))
+        await message.reply(_links_text(file_key), disable_web_page_preview=True)
 
         await log_event(
             client,
